@@ -1,36 +1,58 @@
 <?php
-/**
- * Elgg index page for web-based applications
- *
- * @package Elgg
- * @subpackage Core
- * @author Curverider Ltd
- * @link http://elgg.org/
- */
-
-/**
- * Start the Elgg engine
- */
-define('externalpage',true);
-require_once(dirname(__FILE__) . "/engine/start.php");
-
-if (!trigger_plugin_hook('index', 'system', null, FALSE)) {
 	/**
-	 * Check to see if user is logged in, if not display login form
-	 **/
+	 * Elgg Pages
+	 * 
+	 * @package ElggPages
+	 * @license http://www.gnu.org/licenses/old-licenses/gpl-2.0.html GNU Public License version 2
+	 * @author Curverider Ltd
+	 * @copyright Curverider Ltd 2008-2010
+	 * @link http://elgg.com/
+	 */
 
-	if (isloggedin()) {
-		forward('pg/dashboard/');
+	require_once(dirname(dirname(dirname(__FILE__))) . "/engine/start.php");
+
+	global $CONFIG;
+	
+	// Add menus
+	$owner = page_owner_entity();
+	if (!($owner instanceof ElggGroup)) {
+    		add_submenu_item(sprintf(elgg_echo("pages:user"), page_owner_entity()->name), $CONFIG->url . "pg/pages/owned/" . page_owner_entity()->username, 'pageslinksgeneral');
+    		add_submenu_item(elgg_echo('pages:all'),$CONFIG->wwwroot."mod/pages/world.php", 'pageslinksgeneral');
+	}
+    if (($owner instanceof ElggEntity) && (can_write_to_container(0,$owner->guid))){
+        add_submenu_item(elgg_echo('pages:new'), $CONFIG->url . "pg/pages/new/?container_guid=" . page_owner(), 'pagesactions');
+        if ($owner instanceof ElggUser) add_submenu_item(elgg_echo('pages:welcome'), $CONFIG->url . "pg/pages/welcome/", 'pagesactions');
+    }
+    
+    if (is_callable('group_gatekeeper')) group_gatekeeper();
+	
+	$limit = get_input("limit", 10);
+	$offset = get_input("offset", 0);
+	
+	if($owner instanceof ElggGroup){
+		$title = sprintf(elgg_echo("pages:group"),$owner->name);
+	}else{
+		$title = sprintf(elgg_echo("pages:user"),$owner->name);
 	}
 
-	//Load the front page
-	global $CONFIG;
-	$title = elgg_view_title(elgg_echo('content:latest'));
+	
+	// Get objects
+	$context = get_context();
+	
 	set_context('search');
-	$content = elgg_list_registered_entities(array('limit' => 10, 'full_view' => FALSE, 'allowed_types' => array('object','group')));
-	set_context('main');
-	global $autofeed;
-	$autofeed = FALSE;
-	$content = elgg_view_layout('two_column_left_sidebar', '', $title . $content, elgg_view("account/forms/login"));
-	page_draw(null, $content);
-}
+	
+	$objects = elgg_list_entities(array('types' => 'object', 'subtypes' => 'page_top', 'container_guid' => page_owner(), 'limit' => $limit, 'full_view' => FALSE));
+	
+	set_context($context);
+	
+	//get the owners latest welcome message
+	$welcome_message = elgg_get_entities(array('types' => 'object', 'subtypes' => 'pages_welcome', 'owner_guid' => $owner->guid, 'limit' => 1));
+	
+	$body = elgg_view_title($title);
+	$body .= elgg_view("pages/welcome", array('entity' => $welcome_message));
+	$body .= $objects;
+	$body = elgg_view_layout('two_column_left_sidebar', '', $body);
+	
+	// Finally draw the page
+	page_draw($title, $body);
+?>
